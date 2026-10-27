@@ -2,25 +2,37 @@ import React, { useState, useEffect } from 'react';
 import { 
   Calendar, Clock, User, Mail, Phone, FileText, CheckCircle2, 
   ChevronRight, ArrowLeft, ShieldCheck, Stethoscope, Settings, 
-  Video, DollarSign, Lock, LogOut, Edit3, Save, X, Info, Sparkles, Upload, AlertCircle
+  Video, DollarSign, Lock, LogOut, Edit3, Save, X, Info, Sparkles, Upload, AlertCircle, Key
 } from 'lucide-react';
 
 export default function App() {
-  const [profile, setProfile] = useState({
-    name: 'Dra. Carla Cabuccio',
-    title: 'Médica Clínica | Especialista en Medicina Interna',
-    bio: 'Atención médica integral enfocada en la prevención, diagnóstico y tratamiento de enfermedades del adulto. Enfoque personalizado e interdisciplinario para tu bienestar general.',
-    photoUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=400',
-    fee: 50000,
-    duration: '30 min',
-    modality: 'Virtual (Teleconsulta)',
-    email: 'dracarlacabuccio@gmail.com',
-    phone: '+54 9 11 1234-5678',
-    days: ['Lunes', 'Jueves'],
-    timeSlots: ['09:00', '09:30', '10:00', '10:30', '11:00'],
-    emailJsServiceId: '',
-    emailJsTemplateId: '',
-    emailJsPublicKey: ''
+  const [adminPassword, setAdminPassword] = useState(() => {
+    return localStorage.getItem('dr_app_admin_password') || 'admin123';
+  });
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [passwordChangeSuccess, setPasswordChangeSuccess] = useState(false);
+
+  const [profile, setProfile] = useState(() => {
+    const saved = localStorage.getItem('dr_app_profile');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return {
+      name: 'Dra. Carla Cabuccio',
+      title: 'Médica Clínica | Especialista en Medicina Interna',
+      bio: 'Atención médica integral enfocada en la prevención, diagnóstico y tratamiento de enfermedades del adulto. Enfoque personalizado e interdisciplinario para tu bienestar general.',
+      photoUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=400',
+      fee: 50000,
+      duration: '30 min',
+      modality: 'Virtual (Teleconsulta)',
+      email: 'dracarlacabuccio@gmail.com',
+      phone: '+54 9 11 1234-5678',
+      days: ['Lunes', 'Jueves'],
+      timeSlots: ['09:00', '09:30', '10:00', '10:30', '11:00'],
+      emailJsServiceId: '',
+      emailJsTemplateId: '',
+      emailJsPublicKey: ''
+    };
   });
 
   const [step, setStep] = useState(1);
@@ -33,7 +45,13 @@ export default function App() {
     phone: '',
     reason: ''
   });
-  const [bookedTurns, setBookedTurns] = useState([]);
+  const [bookedTurns, setBookedTurns] = useState(() => {
+    const saved = localStorage.getItem('dr_app_booked_turns');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return [];
+  });
   const [isDoctorMode, setIsDoctorMode] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authPassword, setAuthPassword] = useState('');
@@ -43,18 +61,36 @@ export default function App() {
 
   useEffect(() => {
     setEditProfile({ ...profile });
+    localStorage.setItem('dr_app_profile', JSON.stringify(profile));
   }, [profile]);
+
+  useEffect(() => {
+    localStorage.setItem('dr_app_booked_turns', JSON.stringify(bookedTurns));
+  }, [bookedTurns]);
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (authPassword === 'admin123') {
+    if (authPassword === adminPassword) {
       setIsDoctorMode(true);
       setIsAuthOpen(false);
       setAuthPassword('');
       setAuthError('');
     } else {
-      setAuthError('Contraseña incorrecta (Usa: admin123)');
+      setAuthError('Contraseña incorrecta.');
     }
+  };
+
+  const handleSavePassword = (e) => {
+    e.preventDefault();
+    if (newPasswordInput.trim().length < 4) {
+      alert('La contraseña debe tener al menos 4 caracteres.');
+      return;
+    }
+    setAdminPassword(newPasswordInput.trim());
+    localStorage.setItem('dr_app_admin_password', newPasswordInput.trim());
+    setNewPasswordInput('');
+    setPasswordChangeSuccess(true);
+    setTimeout(() => setPasswordChangeSuccess(false), 3000);
   };
 
   const handleSaveProfile = (e) => {
@@ -181,7 +217,7 @@ Se ha reservado un nuevo turno de teleconsulta:
                   <Lock className="w-6 h-6" />
                 </div>
                 <h3 className="font-bold text-xl text-[#315D5A]">Acceso de Médica</h3>
-                <p className="text-xs text-[#263333]/70 mt-1">Ingresa tu contraseña para editar honorarios, horarios y ver turnos</p>
+                <p className="text-xs text-[#263333]/70 mt-1">Ingresa tu contraseña para editar honorarios, foto y ver turnos</p>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-4">
@@ -191,7 +227,7 @@ Se ha reservado un nuevo turno de teleconsulta:
                     type="password" 
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
-                    placeholder="Contraseña por defecto: admin123"
+                    placeholder="Contraseña actual"
                     className="w-full px-3 py-2 text-sm border border-[#E7D8B5] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#315D5A] bg-white text-[#263333]"
                     required
                   />
@@ -215,7 +251,7 @@ Se ha reservado un nuevo turno de teleconsulta:
               <h2 className="text-xl font-bold text-[#315D5A] flex items-center justify-center gap-2">
                 <Settings className="w-5 h-5" /> Panel de Administración Médica
               </h2>
-              <p className="text-xs text-[#263333]/80 mt-1">Modifica tus datos profesionales, foto, honorarios y gestiona los turnos agendados.</p>
+              <p className="text-xs text-[#263333]/80 mt-1">Modifica tus datos profesionales, foto, honorarios y gestiona tus contraseñas y turnos.</p>
             </div>
 
             <form onSubmit={handleSaveProfile} className="bg-white rounded-2xl p-6 border border-[#E7D8B5] shadow-sm space-y-5">
@@ -305,8 +341,38 @@ Se ha reservado un nuevo turno de teleconsulta:
                   type="submit"
                   className="bg-[#315D5A] hover:bg-[#263333] text-white font-medium px-5 py-2.5 rounded-xl text-sm flex items-center gap-2 shadow-md transition-all"
                 >
-                  <Save className="w-4 h-4" /> Guardar Cambios
+                  <Save className="w-4 h-4" /> Guardar Cambios del Perfil
                 </button>
+              </div>
+            </form>
+
+            <form onSubmit={handleSavePassword} className="bg-white rounded-2xl p-6 border border-[#E7D8B5] shadow-sm space-y-4">
+              <h3 className="font-bold text-base text-[#315D5A] border-b border-[#E7D8B5] pb-2 flex items-center gap-2">
+                <Key className="w-4 h-4" /> Seguridad de la Cuenta (Cambiar Contraseña)
+              </h3>
+              
+              <div>
+                <label className="block text-xs font-semibold text-[#315D5A] mb-1">Nueva Contraseña para el Panel</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="password"
+                    value={newPasswordInput}
+                    onChange={(e) => setNewPasswordInput(e.target.value)}
+                    placeholder="Escribe tu nueva contraseña aquí..."
+                    className="flex-grow text-sm px-3 py-2 border border-[#E7D8B5] rounded-xl bg-white"
+                  />
+                  <button 
+                    type="submit"
+                    className="bg-[#C9826B] hover:bg-[#b06f59] text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 shrink-0 shadow-sm"
+                  >
+                    Actualizar Contraseña
+                  </button>
+                </div>
+                {passwordChangeSuccess && (
+                  <p className="text-xs text-green-700 font-semibold mt-2 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> ¡Contraseña cambiada con éxito!
+                  </p>
+                )}
               </div>
             </form>
 
