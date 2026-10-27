@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Calendar, Clock, User, Mail, Phone, FileText, CheckCircle2, 
   ChevronRight, ArrowLeft, ShieldCheck, Stethoscope, Settings, 
-  Video, DollarSign, Lock, LogOut, Edit3, Save, X, Info, Sparkles, Upload, AlertCircle, Key
+  Video, DollarSign, Lock, LogOut, Edit3, Save, X, Info, Sparkles, Upload, AlertCircle, Key, Send
 } from 'lucide-react';
 
 export default function App() {
@@ -29,11 +29,18 @@ export default function App() {
       phone: '+54 9 11 1234-5678',
       days: ['Lunes', 'Jueves'],
       timeSlots: ['09:00', '09:30', '10:00', '10:30', '11:00'],
-      emailJsServiceId: '',
-      emailJsTemplateId: '',
-      emailJsPublicKey: ''
+      emailJsServiceId: localStorage.getItem('dr_app_service_id') || '',
+      emailJsTemplateId: localStorage.getItem('dr_app_template_id') || '',
+      emailJsPublicKey: localStorage.getItem('dr_app_public_key') || ''
     };
   });
+
+  const [emailConfigInput, setEmailConfigInput] = useState({
+    serviceId: profile.emailJsServiceId,
+    templateId: profile.emailJsTemplateId,
+    publicKey: profile.emailJsPublicKey
+  });
+  const [emailConfigSuccess, setEmailConfigSuccess] = useState(false);
 
   const [step, setStep] = useState(1);
   const [selectedDate, setSelectedDate] = useState('');
@@ -58,6 +65,7 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [editProfile, setEditProfile] = useState({ ...profile });
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
+  const [isSendingMail, setIsSendingMail] = useState(false);
 
   useEffect(() => {
     setEditProfile({ ...profile });
@@ -93,6 +101,22 @@ export default function App() {
     setTimeout(() => setPasswordChangeSuccess(false), 3000);
   };
 
+  const handleSaveEmailConfig = (e) => {
+    e.preventDefault();
+    const updated = {
+      ...profile,
+      emailJsServiceId: emailConfigInput.serviceId.trim(),
+      emailJsTemplateId: emailConfigInput.templateId.trim(),
+      emailJsPublicKey: emailConfigInput.publicKey.trim()
+    };
+    setProfile(updated);
+    localStorage.setItem('dr_app_service_id', emailConfigInput.serviceId.trim());
+    localStorage.setItem('dr_app_template_id', emailConfigInput.templateId.trim());
+    localStorage.setItem('dr_app_public_key', emailConfigInput.publicKey.trim());
+    setEmailConfigSuccess(true);
+    setTimeout(() => setEmailConfigSuccess(false), 3000);
+  };
+
   const handleSaveProfile = (e) => {
     e.preventDefault();
     setProfile({ ...editProfile });
@@ -122,7 +146,7 @@ export default function App() {
     return bookedTurns.some(t => t.date === date && t.time === time);
   };
 
-  const handleBookingSubmit = (e) => {
+  const handleBookingSubmit = async (e) => {
     e.preventDefault();
     const newTurn = {
       id: Date.now(),
@@ -137,39 +161,63 @@ export default function App() {
     setIsBookingSuccess(true);
     setStep(3);
 
-    sendMailNotification(newTurn);
+    await sendMailNotification(newTurn);
   };
 
-  const sendMailNotification = (turn) => {
+  const sendMailNotification = async (turn) => {
+    if (profile.emailJsServiceId && profile.emailJsTemplateId && profile.emailJsPublicKey) {
+      setIsSendingMail(true);
+      try {
+        if (!window.emailjs) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js';
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+        }
+
+        window.emailjs.init(profile.emailJsPublicKey);
+
+        const templateParams = {
+          to_email: profile.email,
+          patient_name: turn.patient.fullName,
+          patient_dni: turn.patient.dni,
+          patient_email: turn.patient.email,
+          patient_phone: turn.patient.phone,
+          patient_reason: turn.patient.reason || 'No especificado',
+          turn_date: turn.date,
+          turn_time: turn.time,
+          turn_fee: turn.fee.toLocaleString()
+        };
+
+        await window.emailjs.send(
+          profile.emailJsServiceId,
+          profile.emailJsTemplateId,
+          templateParams
+        );
+        setIsSendingMail(false);
+        return;
+      } catch (error) {
+        console.error('Error enviando con EmailJS, usando respaldo mailto:', error);
+        setIsSendingMail(false);
+      }
+    }
+
     const subject = encodeURIComponent(`Nuevo Turno Reservado - ${turn.patient.fullName}`);
     const body = encodeURIComponent(
-      `Hola Dra. Carla Cabuccio,
-
-Se ha reservado un nuevo turno de teleconsulta:
-
-` +
-      `📅 Fecha: ${turn.date}
-` +
-      `⏰ Hora: ${turn.time} hs
-
-` +
-      `👤 Paciente: ${turn.patient.fullName}
-` +
-      `🆔 DNI: ${turn.patient.dni}
-` +
-      `✉️ Mail: ${turn.patient.email}
-` +
-      `📱 Teléfono: ${turn.patient.phone}
-` +
-      `📝 Motivo: ${turn.patient.reason || 'No especificado'}
-
-` +
-      `💰 Honorario: $${turn.fee.toLocaleString()}
-
-` +
+      `Hola Dra. Carla Cabuccio,\n\nSe ha reservado un nuevo turno de teleconsulta:\n\n` +
+      `📅 Fecha: ${turn.date}\n` +
+      `⏰ Hora: ${turn.time} hs\n\n` +
+      `👤 Paciente: ${turn.patient.fullName}\n` +
+      `🆔 DNI: ${turn.patient.dni}\n` +
+      `✉️ Mail: ${turn.patient.email}\n` +
+      `📱 Teléfono: ${turn.patient.phone}\n` +
+      `📝 Motivo: ${turn.patient.reason || 'No especificado'}\n\n` +
+      `💰 Honorario: $${turn.fee.toLocaleString()}\n\n` +
       `Por favor contáctese con el paciente para enviarle el link de acceso a la consulta.`
     );
-    
     window.open(`mailto:${profile.email}?subject=${subject}&body=${body}`, '_blank');
   };
 
@@ -251,7 +299,7 @@ Se ha reservado un nuevo turno de teleconsulta:
               <h2 className="text-xl font-bold text-[#315D5A] flex items-center justify-center gap-2">
                 <Settings className="w-5 h-5" /> Panel de Administración Médica
               </h2>
-              <p className="text-xs text-[#263333]/80 mt-1">Modifica tus datos profesionales, foto, honorarios y gestiona tus contraseñas y turnos.</p>
+              <p className="text-xs text-[#263333]/80 mt-1">Modifica tus datos profesionales, foto, configuración de correos y turnos.</p>
             </div>
 
             <form onSubmit={handleSaveProfile} className="bg-white rounded-2xl p-6 border border-[#E7D8B5] shadow-sm space-y-5">
@@ -342,6 +390,62 @@ Se ha reservado un nuevo turno de teleconsulta:
                   className="bg-[#315D5A] hover:bg-[#263333] text-white font-medium px-5 py-2.5 rounded-xl text-sm flex items-center gap-2 shadow-md transition-all"
                 >
                   <Save className="w-4 h-4" /> Guardar Cambios del Perfil
+                </button>
+              </div>
+            </form>
+
+            <form onSubmit={handleSaveEmailConfig} className="bg-white rounded-2xl p-6 border border-[#E7D8B5] shadow-sm space-y-4">
+              <h3 className="font-bold text-base text-[#315D5A] border-b border-[#E7D8B5] pb-2 flex items-center gap-2">
+                <Mail className="w-4 h-4" /> Configuración de Emails Automáticos (EmailJS)
+              </h3>
+              <p className="text-xs text-[#263333]/70">
+                Pega tus credenciales de EmailJS para que los turnos lleguen de forma 100% automática a tu casilla sin abrir ventanas de correo.
+              </p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#315D5A] mb-1">Service ID</label>
+                  <input 
+                    type="text"
+                    value={emailConfigInput.serviceId}
+                    onChange={(e) => setEmailConfigInput({ ...emailConfigInput, serviceId: e.target.value })}
+                    placeholder="service_xxxxx"
+                    className="w-full text-xs px-3 py-2 border border-[#E7D8B5] rounded-xl bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#315D5A] mb-1">Template ID</label>
+                  <input 
+                    type="text"
+                    value={emailConfigInput.templateId}
+                    onChange={(e) => setEmailConfigInput({ ...emailConfigInput, templateId: e.target.value })}
+                    placeholder="template_xxxxx"
+                    className="w-full text-xs px-3 py-2 border border-[#E7D8B5] rounded-xl bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#315D5A] mb-1">Public Key</label>
+                  <input 
+                    type="text"
+                    value={emailConfigInput.publicKey}
+                    onChange={(e) => setEmailConfigInput({ ...emailConfigInput, publicKey: e.target.value })}
+                    placeholder="user_xxxxx"
+                    className="w-full text-xs px-3 py-2 border border-[#E7D8B5] rounded-xl bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end items-center gap-3 pt-2">
+                {emailConfigSuccess && (
+                  <span className="text-xs text-green-700 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> ¡Credenciales guardadas!
+                  </span>
+                )}
+                <button 
+                  type="submit"
+                  className="bg-[#315D5A] hover:bg-[#263333] text-white px-5 py-2.5 rounded-xl text-xs font-semibold shadow-md transition-all"
+                >
+                  Guardar Credenciales EmailJS
                 </button>
               </div>
             </form>
@@ -596,9 +700,10 @@ Se ha reservado un nuevo turno de teleconsulta:
 
                     <button 
                       type="submit" 
-                      className="bg-[#315D5A] text-white px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 hover:bg-[#263333] transition-all shadow-md"
+                      disabled={isSendingMail}
+                      className="bg-[#315D5A] text-white px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 hover:bg-[#263333] transition-all shadow-md disabled:opacity-50"
                     >
-                      Confirmar Reserva (${profile.fee.toLocaleString()})
+                      {isSendingMail ? 'Enviando notificación...' : `Confirmar Reserva ($${profile.fee.toLocaleString()})`}
                     </button>
                   </div>
                 </form>
@@ -612,11 +717,11 @@ Se ha reservado un nuevo turno de teleconsulta:
 
                   <h3 className="text-2xl font-bold text-[#315D5A]">¡Turno Solicitado con Éxito!</h3>
                   <p className="text-xs text-[#263333]/80 max-w-md mx-auto leading-relaxed">
-                    Hemos registrado tu solicitud para el <strong>{selectedDate}</strong> a las <strong>{selectedTime} hs</strong>. Se ha abierto una notificación por mail para la médica.
+                    Hemos registrado tu solicitud para el <strong>{selectedDate}</strong> a las <strong>{selectedTime} hs</strong>. La notificación por correo electrónico ha sido enviada a la médica.
                   </p>
 
                   <div className="bg-[#F7F3EA] border border-[#E7D8B5] p-4 rounded-2xl max-w-sm mx-auto text-xs text-left space-y-2">
-                    <p className="font-bold text-[#315D5A] border-b border-[#E7D8B5] pb-1">Pasos siguientes:</p>
+                    <p className="font-bold text-[#315D5A] border-b border-[#E7D8B5] pb-1">Próximos pasos:</p>
                     <p>1. Recibirás en tu mail ({patientInfo.email}) la confirmación de la cita.</p>
                     <p>2. Se te enviarán los datos para abonar el honorario ($50.000 ARS) y el link de la videollamada.</p>
                   </div>
